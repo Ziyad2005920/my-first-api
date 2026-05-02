@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>منصة حوار الذكاء الاصطناعي</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #1a1a2e; color: #eee; font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 10px; }
+        .container { width: 100%; max-width: 700px; background: #16213e; border-radius: 20px; padding: 20px; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
+        h2 { text-align: center; color: #e94560; margin-bottom: 15px; }
+        .chat-box { background: #0f3460; border-radius: 15px; padding: 15px; height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+        .message { max-width: 80%; padding: 10px 15px; border-radius: 15px; color: white; line-height: 1.5; position: relative; animation: fadeIn 0.3s ease; }
+        .message .role { font-size: 0.8em; margin-bottom: 5px; opacity: 0.7; }
+        .innovator { background: #0077b6; align-self: flex-end; text-align: right; }
+        .critic { background: #e07a5f; align-self: flex-start; text-align: left; }
+        .loading { align-self: center; color: #ccc; font-style: italic; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; justify-content: center; }
+        .btn { background: #e94560; color: white; border: none; padding: 10px 15px; border-radius: 25px; cursor: pointer; font-size: 0.9em; transition: 0.3s; }
+        .btn:hover { background: #c62a47; }
+        .btn:disabled { background: #555; cursor: not-allowed; }
+        .manual-input { display: none; margin-top: 10px; }
+        #manualTopic { width: 100%; padding: 10px; border-radius: 10px; border: none; }
+        .status { text-align: center; margin-top: 10px; font-size: 0.8em; color: #aaa; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>منصة حوار النموذجين 🧠</h2>
+    <div id="chatBox" class="chat-box">
+        <div class="message critic"><div class="role">الناقد ⚠️</div>أهلاً بك! اضغط أحد الأزرار لبدء الحوار.</div>
+    </div>
+    <div class="controls">
+        <button class="btn" onclick="startConversation('new_project')">💡 فكرة مشروع جديد</button>
+        <button class="btn" onclick="startConversation('book')">📚 اقترح كتاباً</button>
+        <button class="btn" onclick="startConversation('benefit_discussion')">📈 ناقش فائدة: <span id="benefitLabel">(افتراضي: تعلم البرمجة)</span></button>
+        <button class="btn" onclick="startConversation('harm_discussion')">⚠️ ناقش مضار: <span id="harmLabel">(افتراضي: السهر)</span></button>
+        <button class="btn" onclick="swapRoles()">🔄 تبادل الأدوار</button>
+        <button class="btn" onclick="showManualInput()">✍️ موضوع يدوي</button>
+    </div>
+    <div id="manualInputDiv" class="manual-input">
+        <input type="text" id="manualTopic" placeholder="أدخل فكرة البداية..." />
+        <button class="btn" style="margin-top:5px" onclick="startConversation('manual')">ابدأ الحوار</button>
+    </div>
+    <div class="status">النموذجان: مبتكر (أزرق)  |  ناقد (برتقالي)</div>
+</div>
+
+<script>
+    // ============ الإعدادات: ضع مفتاح (مفاتيح) API هنا ============
+    const API_KEY_MODEL_ONE = "AIzaSyA9J5_LJmZJAGXI6Y9jf3fbN_l0NoUbYpI"; // مفتاح النموذج المبتكر
+    const API_KEY_MODEL_TWO = "AIzaSyA9J5_LJmZJAGXI6Y9jf3fbN_l0NoUbYpI"; // مفتاح النموذج الناقد (يمكن أن يكون نفس المفتاح)
+    // ============================================================
+
+    // تعريف النماذج
+    const INNOVATOR = { role: "مبتكر 🧠", className: "innovator", key: API_KEY_MODEL_ONE, systemPrompt: "أنت مفكر مبدع. مهمتك اقتراح وتطوير الأفكار بحماس. أجب بالعربية." };
+    const CRITIC = { role: "ناقد ⚠️", className: "critic", key: API_KEY_MODEL_TWO, systemPrompt: "أنت ناقد بناء وحكيم. مهمتك تقييم الأفكار وتقديم تحذيرات واقتراحات تحسين. أجب بالعربية." };
+
+    // حالتهم الحالية (قابلة للتبادل)
+    let currentInnovator = INNOVATOR;
+    let currentCritic = CRITIC;
+    let conversationActive = false; // لمنع الضغط أثناء الحوار
+
+    // دالة لإضافة رسالة في الدردشة
+    function addMessage(role, text, className) {
+        const chatBox = document.getElementById("chatBox");
+        const msgDiv = document.createElement("div");
+        msgDiv.className = `message ${className}`;
+        msgDiv.innerHTML = `<div class="role">${role}</div>${text}`;
+        chatBox.appendChild(msgDiv);
+        chatBox.scrollTop = chatBox.scrollHeight; // التمرير للأسفل
+        return msgDiv;
+    }
+
+    // دالة مساعدة: إنشاء عنصر تحميل مؤقت
+    function showLoading() {
+        const chatBox = document.getElementById("chatBox");
+        const loader = document.createElement("div");
+        loader.className = "loading";
+        loader.id = "loader";
+        loader.textContent = "⏳ جاري التفكير...";
+        chatBox.appendChild(loader);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function removeLoading() {
+        const loader = document.getElementById("loader");
+        if (loader) loader.remove();
+    }
+
+    // الاتصال الفعلي بـ Gemini API
+    async function callGemini(apiKey, systemPrompt, userMessage) {
+        if (apiKey === "AIzaSyA9J5_LJmZJAGXI6Y9jf3fbN_l0NoUbYpI" || !apiKey) {
+            throw new Error("مفتاح API غير موجود. الرجاء إدخاله في المتغيرات أعلاه.");
+        }
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        const body = {
+            system_instruction: { parts: [{ text: systemPrompt }] },
+            contents: [{ parts: [{ text: userMessage }] }]
+        };
+
+        const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+
+        const data = await response.json();
+        if (data.error) throw new Error(data.error.message);
+        return data.candidates[0].content.parts[0].text;
+    }
+
+    // محاكاة المحادثة: جولة بعد جولة
+    async function runConversation(initialTopic, roundCount = 3) {
+        if (conversationActive) return;
+        conversationActive = true;
+        disableButtons(true);
+
+        addMessage("النظام", `بدء الحوار حول: "${initialTopic}"`, "loading");
+        let lastMessage = initialTopic;
+
+        // التكرار حسب عدد الجولات المطلوبة
+        for (let i = 0; i < roundCount; i++) {
+            // المبتكر يتحدث
+            showLoading();
+            try {
+                const innovatorReply = await callGemini(
+                    currentInnovator.key,
+                    currentInnovator.systemPrompt,
+                    `الموضوع: ${lastMessage}. قدم فكرة أو تطويراً.`
+                );
+                removeLoading();
+                addMessage(currentInnovator.role, innovatorReply, currentInnovator.className);
+                lastMessage = innovatorReply;
+            } catch (error) {
+                removeLoading();
+                addMessage("النظام", `خطأ (مبتكر): ${error.message}`, "loading");
+                break;
+            }
+
+            // الناقد يرد
+            showLoading();
+            try {
+                const criticReply = await callGemini(
+                    currentCritic.key,
+                    currentCritic.systemPrompt,
+                    `قم بتقييم هذه الفكرة وتقديم تحذيرات واقتراحات: ${lastMessage}`
+                );
+                removeLoading();
+                addMessage(currentCritic.role, criticReply, currentCritic.className);
+                lastMessage = criticReply;
+            } catch (error) {
+                removeLoading();
+                addMessage("النظام", `خطأ (ناقد): ${error.message}`, "loading");
+                break;
+            }
+        }
+
+        disableButtons(false);
+        conversationActive = false;
+        addMessage("النظام", "تم إنهاء الحوار.", "loading");
+    }
+
+    // تحضير الموضوع حسب الزر المضغوط
+    function startConversation(type) {
+        let topic = "";
+        switch(type) {
+            case "new_project":
+                topic = "أعطني فكرة مشروع تقني مبتكر يمكن تنفيذه";
+                break;
+            case "book":
+                topic = "اقترح كتاباً يستحق القراءة في مجال تطوير الذات أو التكنولوجيا";
+                break;
+            case "benefit_discussion":
+                topic = "ناقش فوائد تعلم البرمجة";
+                break;
+            case "harm_discussion":
+                topic = "ناقش مضار السهر وآثاره السلبية";
+                break;
+            case "manual":
+                const manualInput = document.getElementById("manualTopic").value.trim();
+                if (!manualInput) { alert("الرجاء إدخال موضوع."); return; }
+                topic = manualInput;
+                document.getElementById("manualInputDiv").style.display = "none";
+                break;
+            default: return;
+        }
+        runConversation(topic, 3); // 3 جولات حوار
+    }
+
+    // تبديل أدوار النموذجين
+    function swapRoles() {
+        if (conversationActive) { alert("لا يمكن تبديل الأدوار أثناء حوار نشط."); return; }
+        const temp = currentInnovator;
+        currentInnovator = currentCritic;
+        currentCritic = temp;
+        addMessage("النظام", "تم تبادل الأدوار! الآن المبتكر أصبح الناقد والعكس.", "loading");
+    }
+
+    // إظهار حقل الإدخال اليدوي
+    function showManualInput() {
+        const div = document.getElementById("manualInputDiv");
+        div.style.display = div.style.display === "block" ? "none" : "block";
+    }
+
+    // تعطيل/تفعيل الأزرار أثناء الحوار
+    function disableButtons(disabled) {
+        document.querySelectorAll(".btn").forEach(btn => btn.disabled = disabled);
+    }
+</script>
+</body>
+</html>
