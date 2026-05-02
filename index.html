@@ -89,7 +89,7 @@
 
     // الاتصال الفعلي بـ Gemini API
     async function callGemini(apiKey, systemPrompt, userMessage) {
-        if (apiKey === "AIzaSyA9J5_LJmZJAGXI6Y9jf3fbN_l0NoUbYpI" || !apiKey) {
+        if (apiKey === "PASTE_YOUR_KEY_HERE" || !apiKey) {
             throw new Error("مفتاح API غير موجود. الرجاء إدخاله في المتغيرات أعلاه.");
         }
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
